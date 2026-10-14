@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>水籍資料查詢系統 (多檔版)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body { background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; margin: 0; padding: 0; }
+
+        #mainNavHeader {
+            background: white; border-bottom: 1px solid #e2e8f0; padding: 10px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02); min-height: 55px; flex: none; z-index: 1000;
+        }
+        .app-workspace { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+        .page-module {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; background: #f1f5f9; overflow: hidden;
+        }
+        .page-module.active { display: flex; flex-direction: column; }
+
+        .converter-card { background: white; border-radius: 16px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 850px; border: 1px solid #e2e8f0; }
+        .file-zone { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 15px; background-color: #f1f5f9; text-align: center; margin-bottom: 15px; transition: all 0.2s; }
+        .file-zone:hover { border-color: #3b82f6; background-color: #eff6ff; }
+        .file-count { font-size: 0.85rem; color: #475569; margin-top: 6px; text-align: left; }
+        .status-box { padding: 15px; border-radius: 8px; font-weight: bold; display: none; }
+
+        #queryUploadView {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #f8fafc; z-index: 99; display: flex; align-items: center;
+            justify-content: center; overflow-y: auto; padding: 20px;
+        }
+        .status-loading { background-color: #fff7ed; border: 1px solid #ffedd5; color: #c2410c; }
+        .status-success { background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .debug-panel { background-color: #1e293b; color: #38bdf8; border-radius: 10px; padding: 15px; font-family: monospace; font-size: 0.85rem; margin-top: 20px; border: 1px solid #334155; text-align: left; max-height: 220px; overflow-y: auto; }
+
+        .app-container { display: flex; height: 100%; gap: 12px; padding: 12px; width: 100%; box-sizing: border-box; }
+        .sidebar { width: 380px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; padding: 12px; box-shadow: 2px 0 8px rgba(0,0,0,0.02); flex-shrink: 0; border-radius: 12px; }
+        .list-container { flex: 1; overflow-y: auto; margin-top: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+        .list-group-item-action { cursor: pointer; padding: 6px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; }
+        .list-group-item-action.active { background-color: #0d6efd; border-color: #0d6efd; color: white; }
+        .main-content { flex: 1; overflow-y: auto; padding: 0 10px; }
+        .detail-card { background: white; border-radius: 12px; padding: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); max-width: 900px; margin: 0 auto; }
+        .info-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .info-table th { background-color: #f8fafc; color: #475569; font-weight: 600; width: 130px; text-align: left; padding: 7px 12px; border: 1px solid #e2e8f0; font-size: 1.05rem; }
+        .info-table td { padding: 7px 12px; border: 1px solid #e2e8f0; color: #1e293b; font-size: 1.15rem; }
+        .large-val { font-size: 1.25rem !important; }
+        .badge-lg { font-size: 0.9rem; padding: 4px 8px; border-radius: 5px; }
+        .link-zone { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin-top: 18px; }
+        .links-flex-container { display: flex; flex-wrap: wrap; gap: 10px; row-gap: 8px; }
+        .large-font-input { font-size: 1.15rem !important; font-weight: 500; }
+
+        .search-wrapper { position: relative; width: 100%; }
+        .search-wrapper .form-control { padding-right: 38px !important; }
+        .search-clear-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; font-size: 1.2rem; font-weight: bold; line-height: 1; user-select: none; transition: color 0.15s ease; display: none; z-index: 5; }
+        .search-clear-btn:hover { color: #475569; }
+
+        .mobile-only { display: none; }
+
+        /* ================================================== */
+        /* 📱 手機版面：資料查詢分成「列表頁」與「詳細頁」兩頁 */
+        /* ================================================== */
+        @media (max-width: 768px) {
+            #mainNavHeader { padding: calc(8px + env(safe-area-inset-top)) 12px 8px; }
+            .hdr-note { display: none; }
+
+            /* 匯入畫面：內容超出時可捲動，不會被切掉 */
+            #queryUploadView { align-items: flex-start; padding: 12px 12px calc(32px + env(safe-area-inset-bottom)); }
+            .converter-card { margin: auto; padding: 16px; border-radius: 12px; }
+            .converter-card h3 { font-size: 1.25rem; }
+
+            /* 查詢畫面：上下保留空間 */
+            .app-container { padding: 10px 10px calc(28px + env(safe-area-inset-bottom)); gap: 0; }
+            .sidebar { width: 100%; flex-shrink: 1; min-height: 0; border-right: none; }
+            .list-container { min-height: 0; padding-bottom: 8px; }
+            .list-group-item-action { padding: 12px; font-size: 1.05rem; }
+            .main-content { width: 100%; min-height: 0; padding: 0 0 calc(40px + env(safe-area-inset-bottom)); }
+
+            /* 兩頁切換：預設顯示列表頁；進入詳細頁後只顯示詳細頁 */
+            .app-container:not(.mobile-detail) .main-content { display: none; }
+            .app-container.mobile-detail .sidebar { display: none; }
+
+            .mobile-only { display: flex; }
+            .mobile-bar { position: sticky; top: 0; z-index: 5; background: #fff; padding: 4px 0 8px; margin-bottom: 4px; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+            .detail-card { padding: 12px; }
+            .detail-card > .d-flex { flex-wrap: wrap; gap: 8px; }
+
+            /* 資料表改成直式堆疊，避免橫向被切掉 */
+            .info-table, .info-table tbody, .info-table tr { display: block; width: 100%; }
+            .info-table tr { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+            .info-table th { display: block; width: 100%; border: none; border-bottom: 1px solid #e2e8f0; padding: 4px 10px; font-size: 0.85rem; }
+            .info-table td { display: block; border: none; padding: 6px 10px; font-size: 1.2rem; word-break: break-all; }
+            .links-flex-container .btn { padding: 10px 16px; font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="mainNavHeader">
+    <div class="d-flex align-items-center gap-2">
+        <span class="fw-bold text-secondary">💧 水籍資料查詢系統</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <button id="btnResetCurrentModule" class="btn btn-outline-secondary btn-sm fw-bold" style="display:none;" onclick="resetCurrentModule()">🔄 重新匯入檔案</button>
+        <span class="text-muted small hdr-note">🔒 本地記憶體運算 (重整即清除)</span>
+    </div>
+</div>
+
+<div class="app-workspace">
+    <div id="modQuery" class="page-module active">
+
+        <!-- ========== 核心資料匯入畫面 ========== -->
+        <div id="queryUploadView">
+            <div class="converter-card">
+                <h3 class="text-primary fw-bold text-center mb-1">⚙️ 水籍資料系統 - 核心資料匯入</h3>
+                <p class="text-muted text-center mb-4">每一類資料皆可一次選取多個檔案。資料僅於本地端記憶體內合併處理，重整網頁即清除，確保資安無虞。</p>
+
+                <div class="file-zone" style="border-color: #0d6efd;">
+                    <h6 class="fw-bold text-primary text-start">📁 1. 用戶水籍資料 CSV (路徑2-4-6，可多選)</h6>
+                    <input type="file" id="fileCompany" class="form-control form-control-sm mt-2" accept=".csv" multiple>
+                    <div id="fileCompanyInfo" class="file-count"></div>
+                </div>
+
+                <div class="file-zone" style="border-color: #198754;">
+                    <h6 class="fw-bold text-success text-start">📞 2. 用戶電話資料 CSV (路徑2-4-8-H，可多選)</h6>
+                    <input type="file" id="filePhoneTable" class="form-control form-control-sm mt-2" accept=".csv" multiple>
+                    <div id="filePhoneInfo" class="file-count"></div>
+                </div>
+
+                <div class="d-grid gap-2 mt-4">
+                    <button id="btnProcess" class="btn btn-primary btn-lg fw-bold shadow">⚡ 載入並啟動查詢系統</button>
+                </div>
+
+                <div id="statusBox" class="status-box mt-3 text-center"></div>
+
+                <div class="debug-panel">
+                    <div class="fw-bold text-white border-bottom border-secondary pb-1 mb-2">🔍 系統運行即時觀測台：</div>
+                    <div id="debugLog">等待檔案上傳並點擊匯入...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 水籍資料查詢系統畫面 ========== -->
+        <div id="appContainer" class="app-container" style="display:none;">
+            <div class="sidebar">
+                <h5 class="text-primary fw-bold mb-2">💧 水籍資料查詢系統</h5>
+
+                <div class="mb-2">
+                    <select id="searchTarget" class="form-select large-font-input py-1.5">
+                        <option value="all">🔍 搜尋全部欄位（模糊搜尋）</option>
+                        <option value="id">💧 水號</option>
+                        <option value="name">👤 用戶名稱</option>
+                        <option value="address">🏠 地址 (裝置/通訊)</option>
+                        <option value="phone">☎️ 電話 (電話1/2)</option>
+                        <option value="meter">🕛 表號</option>
+                    </select>
+                </div>
+
+                <div class="mb-2">
+                    <div class="search-wrapper">
+                        <input type="text" id="keyword" class="form-control large-font-input py-1.5" placeholder="輸入關鍵字搜尋..." autocomplete="off">
+                        <span id="searchClear" class="search-clear-btn" title="清除關鍵字">×</span>
+                    </div>
+                </div>
+
+                <div id="displayFieldArea" class="mb-1.5">
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="displayField" id="dispName" value="用戶名稱" checked>
+                        <label class="btn btn-outline-primary btn-sm py-1" for="dispName">👤 用戶</label>
+                        <input type="radio" class="btn-check" name="displayField" id="dispId" value="水號">
+                        <label class="btn btn-outline-primary btn-sm py-1" for="dispId">💧 水號</label>
+                        <input type="radio" class="btn-check" name="displayField" id="dispAddr" value="裝置地址">
+                        <label class="btn btn-outline-primary btn-sm py-1" for="dispAddr">🏠 地址</label>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-1 px-1" style="font-size:0.85rem;">
+                    <span id="progressText" class="fw-bold text-secondary">0 / 0 筆</span>
+                </div>
+
+                <div class="list-container">
+                    <div id="resultList" class="list-group list-group-flush"></div>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <div class="detail-card">
+                    <div class="mobile-only mobile-bar">
+                        <button id="btnBackList" class="btn btn-primary btn-sm fw-bold px-3">⬅️ 返回列表</button>
+                        <span id="mobilePos" class="small fw-bold text-secondary"></span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-1.5 mb-2">
+                        <div>
+                            <span class="text-muted me-2 small">詳細資料</span>
+                            <span id="valWorkArea" class="badge bg-primary badge-lg">工作區</span>
+                            <span id="valStatus" class="badge bg-secondary badge-lg">動態</span>
+                        </div>
+                        <div class="btn-group">
+                            <button id="btnPrev" class="btn btn-outline-secondary btn-sm px-2.5">⬅️ 上一筆</button>
+                            <button id="btnNext" class="btn btn-outline-secondary btn-sm px-2.5">下一筆 ➡️</button>
+                        </div>
+                    </div>
+
+                    <table class="info-table">
+                        <tr>
+                            <th>💧 水號</th>
+                            <td id="valId" class="fw-bold text-primary large-val">-</td>
+                            <th>👤 用戶名稱</th>
+                            <td id="valName" class="fw-bold large-val">-</td>
+                        </tr>
+                        <tr>
+                            <th>📏 口徑大小</th>
+                            <td id="valSize">-</td>
+                            <th>用水種別</th>
+                            <td id="valType">-</td>
+                        </tr>
+                        <tr>
+                            <th>🕛 表號</th>
+                            <td id="valMeter" class="fw-bold">-</td>
+                            <th>📞 電話一</th>
+                            <td id="valPhone1">-</td>
+                        </tr>
+                        <tr>
+                            <th>📱 電話二</th>
+                            <td id="valPhone2" colspan="3">-</td>
+                        </tr>
+                        <tr>
+                            <th>🏠 裝置地址</th>
+                            <td id="valAddr1" colspan="3" class="text-muted">-</td>
+                        </tr>
+                        <tr>
+                            <th>✉️ 通訊地址</th>
+                            <td id="valAddr2" colspan="3" class="text-muted">-</td>
+                        </tr>
+                    </table>
+
+                    <div class="link-zone">
+                        <span class="text-success fw-bold d-block mb-1.5 small">🌐 相關系統連結 (另開新分頁)：</span>
+                        <div id="dynamicLinks" class="links-flex-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// =======================================================
+// 共用小工具
+// =======================================================
+function checkResetBtnDisplay() {
+    document.getElementById('btnResetCurrentModule').style.display =
+        document.getElementById('appContainer').style.display === 'flex' ? 'inline-block' : 'none';
+}
+function resetCurrentModule() {
+    document.getElementById('appContainer').classList.remove('mobile-detail');
+    document.getElementById('appContainer').style.display = 'none';
+    document.getElementById('queryUploadView').style.display = 'flex';
+    checkResetBtnDisplay();
+}
+
+const tick = () => new Promise(r => setTimeout(r, 0));   // 讓出主執行緒，避免網頁卡死
+
+function logDebug(msg, color = "#38bdf8") {
+    const box = document.getElementById('debugLog');
+    if (box.innerHTML.includes("等待檔案上傳")) box.innerHTML = "";
+    box.innerHTML += `<span style="color: ${color}">${msg}</span><br>`;
+    box.parentElement.scrollTop = box.parentElement.scrollHeight;
+}
+
+function restoreScientificNotation(val, isPhone = false) {
+    if (!val) return "";
+    let s = val.toString().trim();
+    if (s === "#N/A" || s === "null" || s === "undefined" || s === "NaN" || s === " ") return "";
+
+    if (isPhone) {
+        if (/^[+\-]?\d+(\.\d+)?[eE][+\-]?\d+$/.test(s)) {
+            try {
+                let num = Number(s);
+                if (!isNaN(num)) s = num.toFixed(0);
+            } catch (e) {}
+        }
+        s = s.replace(/\D/g, '');
+        if (s.startsWith('9') && s.length === 9) { s = '0' + s; }
+        return s;
+    }
+
+    if (/[eE]/.test(s)) {
+        if (/^[+\-]?\d+(\.\d+)?[eE][+\-]?\d+$/.test(s)) {
+            try {
+                let parts = s.split(/[eE]/);
+                let exp = parseInt(parts[1], 10);
+                if (exp > 0 && exp < 30) {
+                    let num = Number(s);
+                    if (!isNaN(num)) return num.toFixed(0);
+                }
+            } catch (e) {}
+        }
+        return s;
+    }
+    return s;
+}
+
+const INVISIBLE_RE = /[\u00a0\u200b]/;
+function cleanVal(val) {
+    if (!val) return "";
+    let s = val.toString().trim();
+    if (INVISIBLE_RE.test(s)) s = s.replace(/[\u00a0\u200b]/g, '').trim();
+    if (s === "#N/A" || s === "null" || s === "undefined" || s === "NaN") return "";
+    return s;
+}
+
+function toHalfWidth(str) {
+    if (!str) return "";
+    return str.toString().replace(/[\uFF01-\uFF5E]/g, function(ch) {
+        return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    }).replace(/\u3000/g, " ");
+}
+
+// 搜尋用正規化：只有含全形字或大寫英文時才轉換；沒變動就共用原字串，節省記憶體
+const NEEDS_NORM = /[\uFF01-\uFF5E\u3000A-Z]/;
+function norm(s) {
+    if (!s) return "";
+    return NEEDS_NORM.test(s) ? toHalfWidth(s).toLowerCase() : s;
+}
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// =======================================================
+// 高速 CSV 解析（分批讓出主執行緒）
+// 無引號的行直接 split；有引號才走逐字解析；支援引號內換行
+// =======================================================
+function countQuotes(s) {
+    let n = 0;
+    for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) === 34) n++;
+    return n;
+}
+
+function splitQuoted(line, delim) {
+    const out = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+            if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+        } else if (c === delim && !inQ) {
+            out.push(cur.trim()); cur = '';
+        } else {
+            cur += c;
+        }
+    }
+    out.push(cur.trim());
+    return out;
+}
+
+// onHeader(row) 回傳 false 代表此檔不可用而略過；onRow(row) 為每筆資料
+async function parseCSVStream(text, onHeader, onRow, onProgress) {
+    text = text.replace(/^[\ufeff\ufffe\u200b\u00a0]+/, '');
+    const len = text.length;
+    let firstEnd = text.indexOf('\n');
+    if (firstEnd === -1) firstEnd = len;
+    const firstLine = text.substring(0, firstEnd);
+    const delim = firstLine.includes(';') ? ';' : (firstLine.includes('\t') ? '\t' : ',');
+
+    let pos = 0, isHeader = true, count = 0;
+    while (pos < len) {
+        let end = text.indexOf('\n', pos);
+        if (end === -1) end = len;
+        let line = text.substring(pos, end);
+        pos = end + 1;
+
+        if (line.indexOf('"') !== -1) {
+            while ((countQuotes(line) & 1) && pos < len) {
+                let e2 = text.indexOf('\n', pos);
+                if (e2 === -1) e2 = len;
+                line += '\n' + text.substring(pos, e2);
+                pos = e2 + 1;
+            }
+        }
+        if (line.charCodeAt(line.length - 1) === 13) line = line.slice(0, -1);
+        if (line.length === 0) continue;
+
+        const row = line.indexOf('"') === -1 ? line.split(delim) : splitQuoted(line, delim);
+
+        if (isHeader) {
+            isHeader = false;
+            const header = row.map(h => h.trim().replace(/[\ufeff\ufffe\u200b\u00a0]/g, ''));
+            if (onHeader(header) === false) return count;
+            continue;
+        }
+        onRow(row);
+        if ((++count % 20000) === 0) {
+            if (onProgress) onProgress(count);
+            await tick();
+        }
+    }
+    return count;
+}
+
+// UTF-8 優先（原生解碼，速度快），失敗則改用 Big5
+async function decodeFile(file) {
+    const buf = await file.arrayBuffer();
+    try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch (e) {
+        return new TextDecoder('big5').decode(buf);
+    }
+}
+
+// =======================================================
+// 檔案選取提示
+// =======================================================
+function bindFileInfo(inputId, infoId) {
+    document.getElementById(inputId).addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        const mb = files.reduce((a, f) => a + f.size, 0) / 1048576;
+        document.getElementById(infoId).innerText = files.length ? `已選取 ${files.length} 個檔案，合計 ${mb.toFixed(1)} MB` : "";
+    });
+}
+bindFileInfo('fileCompany', 'fileCompanyInfo');
+bindFileInfo('filePhoneTable', 'filePhoneInfo');
+
+// =======================================================
+// 💧 匯入與合併
+// =======================================================
+let dataset = [];
+let filteredData = [];
+let currentIndex = 0;
+
+document.getElementById('btnProcess').addEventListener('click', async () => {
+    const compFiles = Array.from(document.getElementById('fileCompany').files);
+    const phoneFiles = Array.from(document.getElementById('filePhoneTable').files);
+    const btn = document.getElementById('btnProcess');
+
+    if (compFiles.length === 0 || phoneFiles.length === 0) {
+        alert("請務必選擇【用戶水籍資料】與【用戶電話資料】至少各一個檔案！");
+        return;
+    }
+
+    document.getElementById('debugLog').innerHTML = "";
+    logDebug(`🚀 開始處理：水籍資料 ${compFiles.length} 個檔案、電話資料 ${phoneFiles.length} 個檔案...`);
+
+    const statusBox = document.getElementById('statusBox');
+    statusBox.className = "status-box mt-3 text-center status-loading";
+    statusBox.innerHTML = "⏳ 正在智慧還原科學記號並進行高速合併...";
+    statusBox.style.display = 'block';
+    btn.disabled = true;
+
+    dataset = []; filteredData = [];   // 釋放舊資料
+
+    try {
+        // ---------- 電話資料（多檔合併） ----------
+        let phoneMap = new Map();
+        let phoneTotal = 0;
+        for (const file of phoneFiles) {
+            statusBox.innerHTML = `⏳ 讀取電話資料：${file.name}`;
+            await tick();
+            const text = await decodeFile(file);
+            let pId = -1, pP1 = -1, pP2 = -1, n = 0;
+            const cnt = await parseCSVStream(text,
+                (h) => {
+                    pId = h.findIndex(x => x.includes("水號"));
+                    pP1 = h.findIndex(x => x.includes("電話一"));
+                    pP2 = h.findIndex(x => x.includes("電話二"));
+                    if (pId === -1) { logDebug(`⚠️ 電話檔「${file.name}」找不到水號欄位，已略過。`, "#f59e0b"); return false; }
+                },
+                (r) => {
+                    const idVal = r[pId] ? r[pId].trim() : "";
+                    if (!idVal) return;
+                    const p1 = pP1 !== -1 ? restoreScientificNotation(r[pP1], true) : "";
+                    const p2 = pP2 !== -1 ? restoreScientificNotation(r[pP2], true) : "";
+                    const old = phoneMap.get(idVal);
+                    if (old) {                      // 重複水號：以非空值補齊/覆蓋
+                        if (p1) old.p1 = p1;
+                        if (p2) old.p2 = p2;
+                    } else {
+                        phoneMap.set(idVal, { p1: p1, p2: p2 });
+                    }
+                    n++;
+                },
+                (c) => { statusBox.innerHTML = `⏳ 讀取電話資料：${file.name}（已處理 ${c.toLocaleString()} 筆）`; }
+            );
+            phoneTotal += n;
+            logDebug(`📞 電話檔「${file.name}」讀取完成：${n.toLocaleString()} 筆。`);
+        }
+        logDebug(`📞 電話資料合計 ${phoneMap.size.toLocaleString()} 個不重複水號。`, "#22c55e");
+
+        // ---------- 水籍主資料（多檔合併，水號重複時後面的檔案覆蓋前面的） ----------
+        const idIndex = new Map();
+        let dupCount = 0;
+        for (const file of compFiles) {
+            statusBox.innerHTML = `⏳ 讀取水籍資料：${file.name}`;
+            await tick();
+            const text = await decodeFile(file);
+            let ix = null, n = 0;
+            await parseCSVStream(text,
+                (h) => {
+                    ix = {
+                        id:     h.findIndex(x => x.includes("水號")),
+                        work:   h.findIndex(x => x.includes("工作區")),
+                        size:   h.findIndex(x => x.includes("口徑")),
+                        type:   h.findIndex(x => x.includes("用水種別")),
+                        status: h.findIndex(x => x.includes("用戶動態")),
+                        name:   h.findIndex(x => x.includes("用戶名稱")),
+                        addr2:  h.findIndex(x => x.includes("通訊地址")),
+                        addr1:  h.findIndex(x => x.includes("裝置地址")),
+                        meter:  h.findIndex(x => x.includes("表號"))
+                    };
+                    if (ix.id === -1) { logDebug(`⚠️ 水籍檔「${file.name}」找不到水號欄位，已略過。`, "#f59e0b"); return false; }
+                },
+                (row) => {
+                    const waterId = row[ix.id] ? row[ix.id].trim() : "";
+                    if (!waterId) return;
+
+                    const name  = ix.name  !== -1 ? cleanVal(row[ix.name])  : "";
+                    const addr1 = ix.addr1 !== -1 ? cleanVal(row[ix.addr1]) : "";
+                    const addr2 = ix.addr2 !== -1 ? cleanVal(row[ix.addr2]) : "";
+                    const meter = ix.meter !== -1 ? restoreScientificNotation(row[ix.meter], false) : "";
+                    const size  = ix.size  !== -1 ? (row[ix.size] || "").trim().replace(/^0+/, '') : "";
+                    const ph    = phoneMap.get(waterId);
+
+                    const item = {
+                        "水號": waterId,
+                        "工作區": ix.work !== -1 ? cleanVal(row[ix.work]) : "",
+                        "口徑": size,
+                        "用水種別": ix.type !== -1 ? cleanVal(row[ix.type]) : "",
+                        "用戶動態": ix.status !== -1 ? cleanVal(row[ix.status]) : "",
+                        "電話號碼1": ph ? ph.p1 : "",
+                        "電話號碼2": ph ? ph.p2 : "",
+                        "用戶名稱": name,
+                        "通訊地址": addr2,
+                        "裝置地址": addr1,
+                        "表號": meter,
+                        // 預先算好的搜尋欄位（內容相同時共用同一字串，不額外佔記憶體）
+                        "水號_c": norm(waterId),
+                        "名_c": norm(name),
+                        "裝置_c": norm(addr1),
+                        "通訊_c": norm(addr2),
+                        "表號_c": norm(meter)
+                    };
+
+                    const exist = idIndex.get(waterId);
+                    if (exist !== undefined) { dataset[exist] = item; dupCount++; }
+                    else { idIndex.set(waterId, dataset.length); dataset.push(item); }
+                    n++;
+                },
+                (c) => { statusBox.innerHTML = `⏳ 讀取水籍資料：${file.name}（已處理 ${c.toLocaleString()} 筆）`; }
+            );
+            logDebug(`📁 水籍檔「${file.name}」讀取完成：${n.toLocaleString()} 筆。`);
+        }
+        phoneMap = null;
+
+        if (dataset.length === 0) throw new Error("沒有讀到任何有效的水籍資料，請確認檔案內含「水號」欄位。");
+        if (dupCount > 0) logDebug(`ℹ️ 跨檔案發現 ${dupCount.toLocaleString()} 筆重複水號，已以後匯入的檔案為準。`, "#f59e0b");
+
+        statusBox.className = "status-box mt-3 text-center status-success";
+        statusBox.innerHTML = `🎉 <b>資料彙整完成！</b><br>共 ${dataset.length.toLocaleString()} 筆，處理時間：${new Date().toLocaleString('zh-TW')}<br>即將自動啟動查詢系統...`;
+        logDebug(`🏁 任務圓滿完成！共 ${dataset.length.toLocaleString()} 筆，進入系統...`, "#22c55e");
+
+        await tick();
+        setTimeout(startMainSystem, 600);
+
+    } catch (error) {
+        statusBox.className = "status-box mt-3 text-center status-loading";
+        statusBox.style.backgroundColor = "#fee2e2";
+        statusBox.style.borderColor = "#fca5a5";
+        statusBox.style.color = "#b91c1c";
+        statusBox.innerHTML = `❌ 處理失敗：${error.message}`;
+        logDebug(`❌ 錯誤: ${error.message}`, "#ef4444");
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+// =======================================================
+// 查詢系統
+// =======================================================
+const externalLinksConfig = [
+    { name: "簡訊帳單", url: "https://www.water.gov.tw/SMSBILL/Smsbill" },
+    { name: "電子帳單", url: "https://sys.water.gov.tw/Login/Index?ReturnUrl=%2F" }
+];
+
+const PAGE = 300;                 // 左側清單一次最多渲染的筆數（視窗化）
+const SEARCH_CHUNK = 40000;       // 搜尋每批處理筆數
+let listStart = 0;
+let activeBtn = null;
+let searchToken = 0;
+let searchTimer = null;
+let isComposing = false;
+let currentTest = null;           // 目前的關鍵字比對函式
+
+const elKeyword = document.getElementById('keyword');
+const elSearchTarget = document.getElementById('searchTarget');
+const elProgress = document.getElementById('progressText');
+const elResultList = document.getElementById('resultList');
+const elDisplayFieldArea = document.getElementById('displayFieldArea');
+const elDynamicLinks = document.getElementById('dynamicLinks');
+const elSearchClear = document.getElementById('searchClear');
+
+function startMainSystem() {
+    filteredData = dataset;       // 不複製陣列，直接引用
+    document.getElementById('appContainer').classList.remove('mobile-detail');
+    currentIndex = 0;
+    currentTest = null;
+    elKeyword.value = "";
+    elSearchClear.style.display = 'none';
+
+    document.getElementById('queryUploadView').style.display = 'none';
+    document.getElementById('appContainer').style.display = 'flex';
+    checkResetBtnDisplay();
+
+    renderLinks();
+    rebuildList();
+    renderCard();
+}
+
+function renderLinks() {
+    elDynamicLinks.innerHTML = "";
+    externalLinksConfig.forEach(cfg => {
+        const a = document.createElement('a');
+        a.className = "btn btn-success btn-sm fw-bold px-2 py-1.5 shadow-sm";
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.href = cfg.url;
+        a.innerText = cfg.name;
+        elDynamicLinks.appendChild(a);
+    });
+}
+
+function setText(id, v) { document.getElementById(id).innerText = v; }
+
+function renderCard() {
+    if (filteredData.length > 0 && (currentIndex < listStart || currentIndex >= listStart + PAGE)) {
+        rebuildList();
+    }
+
+    // 只切換 active 樣式，不重建清單
+    const btn = elResultList.querySelector(`[data-i="${currentIndex}"]`);
+    if (btn !== activeBtn) {
+        if (activeBtn) activeBtn.classList.remove('active');
+        if (btn) {
+            btn.classList.add('active');
+            try { btn.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+        }
+        activeBtn = btn;
+    }
+
+    if (filteredData.length === 0) {
+        ["valId", "valName", "valAddr1", "valAddr2", "valPhone1", "valPhone2", "valMeter", "valSize", "valType"].forEach(id => setText(id, "-"));
+        setText("valId", "查無此資料");
+        setText("valWorkArea", "無");
+        setText("valStatus", "無");
+        elProgress.innerText = "0 / 0 筆"; setMobilePos("0 / 0 筆");
+        return;
+    }
+
+    const row = filteredData[currentIndex];
+    setText("valId", row.水號 || "-");
+    setText("valName", row.用戶名稱 || "-");
+    setText("valAddr1", row.裝置地址 || "-");
+    setText("valAddr2", row.通訊地址 || "-");
+    setText("valPhone1", row.電話號碼1 || "-");
+    setText("valPhone2", row.電話號碼2 || "-");
+    setText("valMeter", row.表號 || "-");
+    setText("valSize", row.口徑 ? row.口徑 + " mm" : "-");
+    setText("valType", row.用水種別 || "-");
+    setText("valWorkArea", row.工作區 || "未分類");
+    setText("valStatus", row.用戶動態 || "未知");
+    const posTxt = `第 ${(currentIndex + 1).toLocaleString()} / ${filteredData.length.toLocaleString()} 筆`;
+    elProgress.innerText = posTxt;
+    setMobilePos(posTxt);
+}
+
+function listText(row, target) {
+    const t = currentTest;
+    if (target === 'id') return `💧 水號: ${row.水號}`;
+    if (target === 'name') return `👤 用戶: ${row.用戶名稱}`;
+    if (target === 'meter') return `🏷️ 表號: ${row.表號}`;
+    if (target === 'address') {
+        if (t && t(row.裝置_c)) return `📍 裝置: ${row.裝置地址}`;
+        if (t && t(row.通訊_c)) return `✉️ 通訊: ${row.通訊地址}`;
+        return `📍 裝置: ${row.裝置地址}`;
+    }
+    if (target === 'phone') {
+        if (t && !t(row.電話號碼1) && t(row.電話號碼2)) return `📞 電話: ${row.電話號碼2}`;
+        return `📞 電話: ${row.電話號碼1}`;
+    }
+    // target === 'all'
+    if (!t) {
+        const f = document.querySelector('input[name="displayField"]:checked');
+        const field = f ? f.value : "用戶名稱";
+        if (field === '水號') return `💧 水號: ${row.水號}`;
+        if (field === '裝置地址') return `📍 ${row.裝置地址}`;
+        return `👤 ${row.用戶名稱} (${row.工作區})`;
+    }
+    if (t(row.名_c)) return `👤 用戶: ${row.用戶名稱}`;
+    if (t(row.裝置_c)) return `📍 裝置地址: ${row.裝置地址}`;
+    if (t(row.通訊_c)) return `✉️ 通訊地址: ${row.通訊地址}`;
+    if (t(row.水號_c)) return `💧 水號: ${row.水號}`;
+    if (t(row.表號_c)) return `🏷️ 表號: ${row.表號}`;
+    if (t(row.電話號碼1) || t(row.電話號碼2)) return `📞 電話: ${row.電話號碼1}`;
+    return `👤 用戶: ${row.用戶名稱}`;
+}
+
+// 視窗化清單：一次只渲染 PAGE 筆，並用事件委派（整份清單只有一個 click 監聽器）
+function rebuildList() {
+    const target = elSearchTarget.value;
+    const total = filteredData.length;
+    listStart = Math.floor(currentIndex / PAGE) * PAGE;
+    const end = Math.min(total, listStart + PAGE);
+
+    const frag = document.createDocumentFragment();
+    activeBtn = null;
+
+    if (listStart > 0) {
+        const tip = document.createElement('div');
+        tip.className = "p-1 text-center small text-muted bg-light";
+        tip.innerText = `... 上方還有 ${listStart.toLocaleString()} 筆 ...`;
+        frag.appendChild(tip);
+    }
+    for (let i = listStart; i < end; i++) {
+        const b = document.createElement('button');
+        b.className = "list-group-item list-group-item-action text-start";
+        b.dataset.i = i;
+        b.textContent = listText(filteredData[i], target);
+        if (i === currentIndex) { b.classList.add('active'); activeBtn = b; }
+        frag.appendChild(b);
+    }
+    if (end < total) {
+        const tip = document.createElement('div');
+        tip.className = "p-1 text-center small text-muted bg-light";
+        tip.innerText = `... 還有 ${(total - end).toLocaleString()} 筆，請精準篩選或按「下一筆」翻頁 ...`;
+        frag.appendChild(tip);
+    }
+    elResultList.replaceChildren(frag);
+}
+
+elResultList.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-i]');
+    if (!b) return;
+    currentIndex = parseInt(b.dataset.i, 10);
+    renderCard();
+    if (isMobile()) showDetail();
+});
+
+// ---------- 手機版：列表頁 / 詳細頁切換 ----------
+const mqMobile = window.matchMedia('(max-width: 768px)');
+function isMobile() { return mqMobile.matches; }
+function setMobilePos(t) { const el = document.getElementById('mobilePos'); if (el) el.innerText = t; }
+
+function showDetail() {
+    const c = document.getElementById('appContainer');
+    if (c.classList.contains('mobile-detail')) return;
+    c.classList.add('mobile-detail');
+    document.querySelector('.main-content').scrollTop = 0;
+    try { history.pushState({ detail: 1 }, ''); } catch (e) {}   // 讓手機「上一頁」回到列表，而不是離開網頁
+}
+function hideDetail() {
+    const c = document.getElementById('appContainer');
+    if (!c.classList.contains('mobile-detail')) return;
+    c.classList.remove('mobile-detail');
+    if (activeBtn) { try { activeBtn.scrollIntoView({ block: 'center' }); } catch (e) {} }
+}
+window.addEventListener('popstate', hideDetail);
+document.getElementById('btnBackList').addEventListener('click', () => {
+    if (history.state && history.state.detail) history.back();
+    else hideDetail();
+});
+
+// ---------- 搜尋 ----------
+function buildMatcher(rawKw) {
+    const parts = rawKw.split(/[\*\s]+/).filter(Boolean);
+    if (parts.length === 0) return null;
+    if (parts.length === 1) {
+        const k = parts[0];
+        return (s) => s.indexOf(k) !== -1;           // 單一關鍵字：indexOf 最快
+    }
+    const re = new RegExp(parts.map(escapeRe).join('.*'), 'i');   // 多關鍵字/萬用字元
+    return (s) => re.test(s);
+}
+
+function matchRow(item, target, t) {
+    switch (target) {
+        case 'id':      return t(item.水號_c);
+        case 'name':    return t(item.名_c);
+        case 'meter':   return t(item.表號_c);
+        case 'address': return t(item.裝置_c) || t(item.通訊_c);
+        case 'phone':   return t(item.電話號碼1) || t(item.電話號碼2);
+        default:
+            return t(item.名_c) || t(item.裝置_c) || t(item.通訊_c) || t(item.水號_c) ||
+                   t(item.表號_c) || t(item.電話號碼1) || t(item.電話號碼2);
+    }
+}
+
+async function doSearch() {
+    const token = ++searchToken;          // 新搜尋會讓舊搜尋自動作廢
+    const target = elSearchTarget.value;
+    const rawKw = toHalfWidth(elKeyword.value.trim().toLowerCase());
+
+    elSearchClear.style.display = elKeyword.value.length > 0 ? 'block' : 'none';
+    elDisplayFieldArea.classList.toggle('d-none', target !== 'all');
+
+    const test = rawKw ? buildMatcher(rawKw) : null;
+    currentTest = test;
+
+    if (!test) {
+        filteredData = dataset;
+    } else {
+        const out = [];
+        const N = dataset.length;
+        for (let s = 0; s < N; s += SEARCH_CHUNK) {
+            const e = Math.min(N, s + SEARCH_CHUNK);
+            for (let i = s; i < e; i++) {
+                const it = dataset[i];
+                if (matchRow(it, target, test)) out.push(it);
+            }
+            if (e < N) {
+                elProgress.innerText = `🔎 搜尋中 ${Math.round(e / N * 100)}%（已找到 ${out.length.toLocaleString()} 筆）`;
+                await tick();
+                if (token !== searchToken) return;
+            }
+        }
+        if (token !== searchToken) return;
+        filteredData = out;
+    }
+
+    currentIndex = 0;
+    rebuildList();
+    renderCard();
+}
+
+function scheduleSearch() {
+    clearTimeout(searchTimer);
+    // 資料量大時延長 debounce，避免每敲一個字就掃描一次
+    searchTimer = setTimeout(doSearch, dataset.length > 100000 ? 300 : 120);
+}
+
+elKeyword.addEventListener('compositionstart', () => { isComposing = true; });
+elKeyword.addEventListener('compositionend', () => { isComposing = false; scheduleSearch(); });
+elKeyword.addEventListener('input', () => {
+    elSearchClear.style.display = elKeyword.value.length > 0 ? 'block' : 'none';
+    if (!isComposing) scheduleSearch();   // 中文輸入法組字中不搜尋
+});
+elSearchTarget.addEventListener('change', doSearch);
+elSearchClear.addEventListener('click', () => {
+    elKeyword.value = "";
+    doSearch();
+    elKeyword.focus();
+});
+document.querySelectorAll('input[name="displayField"]').forEach(radio => {
+    radio.addEventListener('change', rebuildList);
+});
+
+document.getElementById('btnPrev').addEventListener('click', () => {
+    if (currentIndex > 0) { currentIndex--; renderCard(); }
+});
+document.getElementById('btnNext').addEventListener('click', () => {
+    if (currentIndex < filteredData.length - 1) { currentIndex++; renderCard(); }
+});
+</script>
+</body>
+</html>
